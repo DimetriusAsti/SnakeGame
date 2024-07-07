@@ -1,0 +1,420 @@
+#include <SFML/Graphics.hpp>
+#include <deque>
+#include <cstdlib>
+#include <ctime>
+#include <iostream>
+
+using namespace std;
+
+const int WIDTH = 800;
+const int HEIGHT = 600;
+const int CELL_SIZE = 20;
+
+enum GameState { MENU, GAME, GAME_OVER };
+
+struct Segment
+{
+    int x, y;
+};
+
+enum Direction { UP, DOWN, LEFT, RIGHT };
+
+class Snake {
+
+private:
+    std::deque<Segment> segments;
+    Direction direction;
+    bool grow = false;
+
+    sf::Texture headTexture;
+    sf::Sprite headSprite;
+
+    sf::Texture bodyTexture;
+    sf::Sprite bodySprite;
+
+    sf::Texture tailTexture;
+    sf::Sprite tailSprite;
+
+public:
+    // Конструктор
+    Snake() {
+        // Инициализация змейки
+        segments.push_front({ WIDTH / 2, HEIGHT / 2 });
+        direction = RIGHT;
+
+        if (!headTexture.loadFromFile("head1.png")) {
+            cerr << "Error loading head1.png" << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        if (!bodyTexture.loadFromFile("body.png")) {
+            cerr << "Error loading body.png" << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        if (!tailTexture.loadFromFile("tail.png")) {
+            cerr << "Error loading tail.png" << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        headSprite.setTexture(headTexture);
+        headSprite.setScale(
+            static_cast<float>(CELL_SIZE) / headTexture.getSize().x,
+            static_cast<float>(CELL_SIZE) / headTexture.getSize().y
+        );
+
+        tailSprite.setTexture(tailTexture);
+        tailSprite.setScale(
+            static_cast<float>(CELL_SIZE) / tailTexture.getSize().x,
+            static_cast<float>(CELL_SIZE) / tailTexture.getSize().y
+        );
+
+        // Центрируем точку вращения спрайта головы и хвоста 
+        headSprite.setOrigin(headTexture.getSize().x / 2, headTexture.getSize().y / 2);
+        tailSprite.setOrigin(tailTexture.getSize().x / 2, tailTexture.getSize().y / 2);
+
+        bodySprite.setTexture(bodyTexture);
+    }
+
+    void update() {
+        Segment newHead = segments.front();
+        switch (direction) {
+        case UP: newHead.y -= CELL_SIZE; break;
+        case DOWN: newHead.y += CELL_SIZE; break;
+        case LEFT: newHead.x -= CELL_SIZE; break;
+        case RIGHT: newHead.x += CELL_SIZE; break;
+        }
+
+
+        segments.push_front(newHead);
+
+        if (!grow) {
+            segments.pop_back();
+        }
+        grow = false;
+    }
+
+    void setDirection(Direction dir) {
+        // Получаем текущую позицию головы и следующего за ней сегмента тела
+        if (segments.size() > 1) {
+            Segment head = segments.front();
+            Segment next = segments[1];
+
+            // Проверяем, является ли новое направление противоположным текущему направлению
+            if ((dir == UP && next.y < head.y) ||
+                (dir == DOWN && next.y > head.y) ||
+                (dir == LEFT && next.x < head.x) ||
+                (dir == RIGHT && next.x > head.x)) {
+                return; // Игнорируем разворот на 180 градусов
+            }
+        }
+
+        // Если новое направление не противоположно текущему направлению
+        if ((dir == UP && direction != DOWN) ||
+            (dir == DOWN && direction != UP) ||
+            (dir == LEFT && direction != RIGHT) ||
+            (dir == RIGHT && direction != LEFT)) {
+            direction = dir;
+        }
+    }
+
+
+    void growSnake() {
+        grow = true;
+    }
+
+    bool checkCollision() {
+        Segment head = segments.front();
+        if (head.x < 0 || head.x >= WIDTH || head.y < 0 || head.y >= HEIGHT) {
+            return true;
+        }
+
+        for (size_t i = 1; i < segments.size(); i++) {
+            if (segments[i].x == head.x && segments[i].y == head.y) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void draw(sf::RenderWindow& window) {
+        // Определяем угол поворота головы в зависимости от направления
+        float angle = 0.f;
+        switch (direction) {
+        case UP: angle = 270.f; break;
+        case DOWN: angle = 90.f; break;
+        case LEFT: angle = 180.f; break;
+        case RIGHT: angle = 0.f; break;
+        }
+
+        // Отрисовываем сегменты змейки
+        for (size_t i = 1; i < segments.size() - 1; ++i) {
+            bodySprite.setPosition(segments[i].x, segments[i].y);
+            window.draw(bodySprite);
+        }
+
+        // Устанавливаем позицию и поворот головы
+        headSprite.setPosition(segments.front().x + CELL_SIZE / 2, segments.front().y + CELL_SIZE / 2);
+        headSprite.setRotation(angle);
+        window.draw(headSprite);
+
+        // Угол поворота хвоста
+        if (segments.size() > 1) {
+            float tailAngle = 0.f;
+            Segment last = segments.back();
+            Segment secondLast = segments[segments.size() - 2];
+
+            if (last.x == secondLast.x) {
+                tailAngle = (last.y > secondLast.y) ? 270.f : 90.f;
+            }
+            else {
+                tailAngle = (last.x > secondLast.x) ? 180.f : 0.f;
+            }
+
+            // Устанавливаем позицию и поворот хвоста
+            tailSprite.setPosition(last.x + CELL_SIZE / 2, last.y + CELL_SIZE / 2);
+            tailSprite.setRotation(tailAngle);
+            window.draw(tailSprite);
+        }
+    }
+
+    Segment getPosition() const {
+        return segments.front();
+    }
+
+    void reset() {
+        segments.clear();
+        segments.push_front({ WIDTH / 2, HEIGHT / 2 });
+        direction = RIGHT;
+        grow = false;
+    }
+};
+
+class Food {
+private:
+    Segment position;
+
+    sf::Texture foodTexture;
+    sf::Sprite foodSprite;
+
+public:
+    Food() {
+        randomizePosition();
+
+        if (!foodTexture.loadFromFile("fruit.png")) {
+            cerr << "Error loading fruit.png" << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        foodSprite.setTexture(foodTexture);
+        foodSprite.setScale(
+            static_cast<float>(CELL_SIZE) / foodTexture.getSize().x,
+            static_cast<float>(CELL_SIZE) / foodTexture.getSize().y
+        );
+    }
+
+    void randomizePosition() {
+        position.x = (std::rand() % (WIDTH / CELL_SIZE)) * CELL_SIZE;
+        position.y = (std::rand() % (HEIGHT / CELL_SIZE)) * CELL_SIZE;
+    }
+
+    void draw(sf::RenderWindow& window) {
+        foodSprite.setPosition(position.x, position.y);
+        window.draw(foodSprite);
+    }
+
+    const Segment& getPosition() const {
+        return position;
+    }
+};
+
+
+class Menu {
+private:
+    sf::Font font;
+    sf::Text playButton;
+    sf::Text exitButton;
+
+public:
+    Menu() {
+        if (!font.loadFromFile("arial.ttf")) {
+            cerr << "Error loading arial.ttf" << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        playButton.setFont(font);
+        playButton.setString("Play");
+        playButton.setCharacterSize(50);
+        playButton.setFillColor(sf::Color::White);
+        playButton.setPosition(WIDTH / 2 - playButton.getGlobalBounds().width / 2, HEIGHT / 2 - 100);
+
+        exitButton.setFont(font);
+        exitButton.setString("Exit");
+        exitButton.setCharacterSize(50);
+        exitButton.setFillColor(sf::Color::White);
+        exitButton.setPosition(WIDTH / 2 - exitButton.getGlobalBounds().width / 2, HEIGHT / 2 + 50);
+    }
+
+    void draw(sf::RenderWindow& window) {
+        window.clear();
+        window.draw(playButton);
+        window.draw(exitButton);
+        window.display();
+    }
+
+    void handleEvents(sf::RenderWindow& window, GameState& gameState) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) {
+                window.close();
+            }
+
+            if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+                sf::Vector2f mousePos(event.mouseButton.x, event.mouseButton.y);
+
+                if (playButton.getGlobalBounds().contains(mousePos)) {
+                    gameState = GAME;
+                }
+                else if (exitButton.getGlobalBounds().contains(mousePos)) {
+                    window.close();
+                }
+            }
+
+            if (event.type == sf::Event::MouseMoved) {
+                sf::Vector2f mousePos(event.mouseMove.x, event.mouseMove.y);
+
+                if (playButton.getGlobalBounds().contains(mousePos)) {
+                    playButton.setFillColor(sf::Color::Green);
+                }
+                else {
+                    playButton.setFillColor(sf::Color::White);
+                }
+
+                if (exitButton.getGlobalBounds().contains(mousePos)) {
+                    exitButton.setFillColor(sf::Color::Green);
+                }
+                else {
+                    exitButton.setFillColor(sf::Color::White);
+                }
+            }
+        }
+    }
+};
+
+int main() {
+    std::srand(static_cast<unsigned>(std::time(nullptr))); // Инициализация генератора случайных чисел
+
+    sf::RenderWindow window(sf::VideoMode(WIDTH, HEIGHT), "Snake Game");
+    window.setFramerateLimit(10);
+
+    Snake snake;
+    Food food;
+    Menu menu;
+
+    sf::Font font;
+    if (!font.loadFromFile("arial.ttf")) {
+        cerr << "Error loading arial.ttf" << endl;
+        return EXIT_FAILURE;
+    }
+
+    sf::Text gameOverText;
+    gameOverText.setFont(font);
+    gameOverText.setString("Game Over\nPress Enter to return to menu");
+    gameOverText.setCharacterSize(40);
+    gameOverText.setFillColor(sf::Color::Red);
+    gameOverText.setPosition(WIDTH / 2 - gameOverText.getGlobalBounds().width / 2, HEIGHT / 2 - gameOverText.getGlobalBounds().height / 2);
+
+
+    GameState gameState = MENU;
+
+    // Загрузка текстуры фона
+    sf::Texture backgroundTexture;
+    if (!backgroundTexture.loadFromFile("back.png")) {
+        cerr << "Error loading back.png" << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    sf::Sprite backgroundSprite(backgroundTexture);
+    backgroundSprite.setScale(
+        static_cast<float>(WIDTH) / backgroundTexture.getSize().x,
+        static_cast<float>(HEIGHT) / backgroundTexture.getSize().y
+    );
+
+    while (window.isOpen()) {
+
+        switch (gameState) {
+
+        case MENU:
+            menu.handleEvents(window, gameState);
+            menu.draw(window);
+            break;
+
+        
+            
+
+
+        case GAME:
+        {
+            sf::Event event; // Переменная для хранения событий
+            while (window.pollEvent(event)) {
+                if (event.type == sf::Event::Closed) {
+                    window.close();
+                }
+                if (event.type == sf::Event::KeyPressed) {
+                    switch (event.key.code) {
+                    case sf::Keyboard::W: snake.setDirection(UP); break;
+                    case sf::Keyboard::S: snake.setDirection(DOWN); break;
+                    case sf::Keyboard::A: snake.setDirection(LEFT); break;
+                    case sf::Keyboard::D: snake.setDirection(RIGHT); break;
+                    default: break;
+                    }
+                }
+            }
+
+            snake.update();
+            if (snake.checkCollision()) {
+                gameState = GAME_OVER;
+            }
+
+            if (snake.getPosition().x == food.getPosition().x &&
+                snake.getPosition().y == food.getPosition().y) {
+                snake.growSnake();
+                food.randomizePosition();
+            }
+
+            window.clear();
+            window.draw(backgroundSprite); // Отрисовка фона
+            snake.draw(window);
+            food.draw(window);
+            window.display();
+        }
+        break;
+
+        case GAME_OVER:
+        {
+            sf::Event event;
+            while (window.pollEvent(event)) {
+                if (event.type == sf::Event::Closed) {
+                    window.close();
+                }
+
+                if (event.type == sf::Event::KeyPressed) {
+                    if (event.key.code == sf::Keyboard::Enter) {
+                        gameState = MENU;
+                        snake.reset();
+                    }
+                }
+            }
+
+            window.clear();
+            window.draw(gameOverText);
+            window.display();
+        }
+        break;
+
+        }
+    }
+        
+    return 0;
+}
